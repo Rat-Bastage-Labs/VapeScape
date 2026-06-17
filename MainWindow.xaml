@@ -1,0 +1,80 @@
+﻿<Window x:Class="WPF_Game_NET.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Vape Scape - The Smoking Maze Game"
+        Width="1000"
+        Height="700"
+        KeyDown="Window_KeyDown">
+        
+    <Window.Resources>
+
+        <Style x:Key="HorrorTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#8A8A8A"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect
+                        BlurRadius="8"
+                        ShadowDepth="0"
+                        Color="Black"
+                        Opacity="1"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+    </Window.Resources>
+
+    <Grid Background="Black">
+        
+        <Canvas x:Name="GameCanvas"
+                Background="Black"/>
+
+        <Canvas x:Name="MenuSmokeCanvas"
+        IsHitTestVisible="False"
+        Background="Transparent"/>
+
+        <TextBlock x:Name="LevelText"
+           Style="{StaticResource HorrorTextStyle}"
+           HorizontalAlignment="Center"
+           VerticalAlignment="Top"
+           Margin="0,10,0,0"/>
+
+         <StackPanel x:Name="ControlsPanel"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Margin="10"
+                    Visibility="Collapsed">
+
+            <TextBlock Text="Move: Arrow Keys"
+                       Style="{StaticResource HorrorTextStyle}"/>
+
+            <TextBlock Text="Vape: Spacebar"
+                       Style="{StaticResource HorrorTextStyle}"/>
+
+            <TextBlock Text="Smoke: Shift"
+                       Style="{StaticResource HorrorTextStyle}"/>
+
+        </StackPanel>
+
+        <StackPanel x:Name="StatsPanel"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Margin="10">
+
+            <TextBlock x:Name="BatteryText"
+                    Text="Battery: 100%"
+                    Style="{StaticResource HorrorTextStyle}"/>
+
+            <TextBlock x:Name="LiquidText"
+                    Text="Liquid: 100%"
+                    Style="{StaticResource HorrorTextStyle}"/>
+
+            <TextBlock x:Name="CoilText"
+                    Text="Coil: 100%"
+                    Style="{StaticResource HorrorTextStyle}"/>
+        </StackPanel>
+
+    </Grid>
+</Window>
