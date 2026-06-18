@@ -59,8 +59,8 @@
 * ##### Displays player orientation and nearby exits
 
 #### Leaderboard System
-##### * Local JSON-based persistence
-##### * Tracks:
+* ##### Local JSON-based persistence
+* ##### Tracks:
   * ##### Player name
   * ##### Highest level reached
   * ##### Mazes completed
@@ -155,21 +155,6 @@ Assets
 Data
  └── leaderboard.json
 ```
-
----
-
-### Future Improvements
-
-* ##### Sound effects and ambient audio
-* ##### Additional maze themes
-* ##### Save/load game functionality
-* ##### Enemy encounters
-* ##### Achievement system
-* ##### Global online leaderboards
-* ##### Controller support
-* ##### Enhanced visual effects
-
----
 
 ### Credits
 
