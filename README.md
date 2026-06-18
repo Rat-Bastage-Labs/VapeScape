@@ -11,16 +11,16 @@
 
 ### Features
 
-##### * Custom Raycasting Engine
-##### * Real-time first-person rendering
-##### * Dynamic wall shading
-##### * Distance-based lighting
-##### * Fog and visibility effects
+* ##### Custom Raycasting Engine
+* ##### Real-time first-person rendering
+* ##### Dynamic wall shading
+* ##### Distance-based lighting
+* ##### Fog and visibility effects
 
 #### Procedural Maze Generation
-##### * Randomly generated mazes every level
-##### * Increasing maze complexity as levels progress
-##### * Intelligent exit placement using path-distance calculations
+* ##### Randomly generated mazes every level
+* ##### Increasing maze complexity as levels progress
+* ##### Intelligent exit placement using path-distance calculations
 
 #### Vape Survival System
 
@@ -28,17 +28,17 @@
 
 ##### Manage three critical resources:
 
-##### * **Battery** – powers the vape light
-##### * **Liquid** – required to produce vapor
-##### * **Coil Condition** – affects vape performance
+* ##### **Battery** – powers the vape light
+* ##### **Liquid** – required to produce vapor
+* ##### **Coil Condition** – affects vape performance
 
 ##### - Poor resource management can leave you trapped in darkness.
 
 #### Dynamic Fog System
-##### * Volumetric fog simulation
-##### * Deployable vape smoke clouds
-##### * Visibility reduction mechanics
-##### * Atmospheric environmental effects
+* ##### Volumetric fog simulation
+* ##### Deployable vape smoke clouds
+* ##### Visibility reduction mechanics
+* ##### Atmospheric environmental effects
 
 #### Progressive Difficulty
 ##### Maze sizes increase as players advance:
@@ -53,10 +53,10 @@
 | 46+         | 33 x 33   |
 
 #### Map System
-##### * Limited-use map charges
-##### * Earn additional charges at milestone levels
-##### * Reveals nearby maze structures
-##### * Displays player orientation and nearby exits
+* ##### Limited-use map charges
+* ##### Earn additional charges at milestone levels
+* ##### Reveals nearby maze structures
+* ##### Displays player orientation and nearby exits
 
 #### Leaderboard System
 ##### * Local JSON-based persistence
@@ -67,12 +67,12 @@
   * ##### Achievement date
 
 #### Visual Effects
-##### * Animated splash screen
-##### * Menu smoke particle system
-##### * Dynamic vape glow effects
-##### * Exit beacon lighting
-##### * Vignette post-processing
-##### * Atmospheric fog rendering
+* ##### Animated splash screen
+* ##### Menu smoke particle system
+* ##### Dynamic vape glow effects
+* ##### Exit beacon lighting
+* ##### Vignette post-processing
+* ##### Atmospheric fog rendering
 
 ---
 
