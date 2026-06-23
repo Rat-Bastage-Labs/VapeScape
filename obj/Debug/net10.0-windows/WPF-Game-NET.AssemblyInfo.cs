@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("VapeScape")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ad291dabc8457b54f58dd19982bb53d0c5ad1858")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+939b903cb36202af1e2a910d8ca26f46912937ec")]
 [assembly: System.Reflection.AssemblyProductAttribute("VapeScape")]
 [assembly: System.Reflection.AssemblyTitleAttribute("VapeScape")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
