@@ -1,12 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "gb1fBRc10HU=",
+  "dgSpecHash": "kKzKqpvAi2U=",
   "success": true,
   "projectFilePath": "C:\\Projects\\WPF-Game-NET\\WPF-Game-NET.csproj",
-  "expectedPackageFiles": [
-    "C:\\Users\\phoen\\.nuget\\packages\\microsoft.netcore.app.runtime.win-x64\\10.0.8\\microsoft.netcore.app.runtime.win-x64.10.0.8.nupkg.sha512",
-    "C:\\Users\\phoen\\.nuget\\packages\\microsoft.windowsdesktop.app.runtime.win-x64\\10.0.8\\microsoft.windowsdesktop.app.runtime.win-x64.10.0.8.nupkg.sha512",
-    "C:\\Users\\phoen\\.nuget\\packages\\microsoft.aspnetcore.app.runtime.win-x64\\10.0.8\\microsoft.aspnetcore.app.runtime.win-x64.10.0.8.nupkg.sha512"
-  ],
+  "expectedPackageFiles": [],
   "logs": []
 }

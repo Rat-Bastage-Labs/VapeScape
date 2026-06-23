@@ -1,15 +1,16 @@
 ﻿using System;
 using System.IO;
+using IOPath = System.IO.Path;
 using System.Text.Json; 
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging; 
 using System.Windows.Shapes;
+using System.Text.RegularExpressions;
 using System.Windows.Threading;
 using System.Windows.Input;
-
-using IOPath = System.IO.Path;
 
 namespace WPF_Game_NET
 {
@@ -31,6 +32,14 @@ namespace WPF_Game_NET
 
         private int exitX;
         private int exitY;
+        private int hallPassX;
+        private int hallPassY;
+
+        private bool hallPassCollected = false;
+        private readonly List<string> recoveredPasses = new();
+        private string currentExplorerName = "";
+        private string escapedExplorerName = "";
+        private bool showJournal = false;
 
         private int currentLevel = 1;
         private int mazesCompleted = 0;
@@ -50,6 +59,7 @@ namespace WPF_Game_NET
         double playerX = 1.5;
         double playerY = 1.5;
         double playerAngle = 0;
+        private bool isInputLocked = false;
 
         bool moveForward;
         bool moveBackward;
@@ -68,6 +78,34 @@ namespace WPF_Game_NET
         private bool hasSmokeLoaded = false;
         private readonly List<VapeCloud> clouds = new();
         private const double CloudSpeed = 0.06;
+
+        private readonly string[] firstNames =
+        {
+            "Ethan", "Maya", "Logan", "Avery", "Jules",
+            "Carter", "Sienna", "Noah", "Dylan", "Lena",
+            "Kai", "Milo", "Olivia", "Lucas", "Harper",
+            "Wyatt", "Zoe", "Elijah", "Nora", "Caleb",
+            "Ivy", "Mason", "Ruby", "Leo", "Violet",
+            "Finn", "Hazel", "Jasper", "Aria", "Rowan",
+            "Aiden", "Brooklyn", "Connor", "Delilah", "Emmett",
+            "Freya", "Gavin", "Hannah", "Isaac", "Josephine",
+            "Kieran", "Layla", "Micah", "Naomi", "Owen",
+            "Piper", "Quinn", "Ryder", "Sadie", "Theo"
+        };
+
+        private readonly string[] lastNames =
+        {
+            "Frost", "Hollow", "Voss", "Black", "Mercer",
+            "Vale", "Graves", "Ash", "Reed", "Hart",
+            "Winters", "Crow", "Stone", "Drake", "Cross",
+            "Wilde", "Hawthorne", "Blake", "Knight", "Fox",
+            "Rivera", "Cole", "Brooks", "Pierce", "Shaw",
+            "West", "Quinn", "Lane", "Thorne", "Maddox",
+            "Holloway", "Sinclair", "Bennett", "Carver", "Sterling",
+            "Vaughn", "Sawyer", "Monroe", "Bishop", "Fletcher",
+            "Locke", "Griffin", "Hayes", "Palmer", "Baxter",
+            "Sullivan", "Caldwell", "Harrison", "Wren", "Donovan"
+        };
 
         public class LeaderboardEntry
         {
@@ -289,7 +327,8 @@ namespace WPF_Game_NET
             Playing,
             Guide,
             Leaderboard,
-            About
+            About,
+            Ending
         }
 
         private GameState gameState = GameState.Menu;
@@ -498,6 +537,7 @@ namespace WPF_Game_NET
                 "Space → Activate Vape Light\n" +
                 "Shift → Release Smoke Cloud\n" +
                 "Ctrl + P → Use Map Charge\n" +
+                "Ctrl + J → Toggle Journal\n" +
                 "C → Toggle Controls Panel"
             );
         }
@@ -565,15 +605,15 @@ namespace WPF_Game_NET
         {
             StopMenuSmoke();
             gameState = GameState.Playing;
-            SetGameplayUIVisible(true);
-
+            SetGameplayUIVisible(true); 
             GenerateDungeon();
-            gameTimer.Start();
+            gameTimer.Start(); 
         }
 
         public MainWindow()
         { 
             InitializeComponent();
+            GenerateExplorerNames();
             LoadLeaderboard();
             UpdateVapeStats(); 
             UpdateLevelDisplay(); 
@@ -761,6 +801,7 @@ namespace WPF_Game_NET
 
             Carve(1, 1); 
             GenerateExit();
+            GenerateHallPass();
 
             playerX = 1.5;
             playerY = 1.5;
@@ -815,6 +856,163 @@ namespace WPF_Game_NET
 
             exitX = bestX;
             exitY = bestY;
+        }
+
+        private string[] explorerNames = Array.Empty<string>();
+
+        private void GenerateExplorerNames()
+        {
+            var random = new Random();
+            var names = new HashSet<string>();
+
+            while (names.Count < 50)
+            {
+                names.Add(
+                    $"{firstNames[random.Next(firstNames.Length)]} " +
+                    $"{lastNames[random.Next(lastNames.Length)]}");
+            }
+
+            explorerNames = names.ToArray();
+        } 
+        private void GenerateHallPass()
+        {
+            int bestX = -1;
+            int bestY = -1;
+            int bestDistance = -1;
+
+            for (int y = 1; y < MapHeight - 1; y++)
+            {
+                for (int x = 1; x < MapWidth - 1; x++)
+                {
+                    if (map[y, x] != 0)
+                        continue;
+
+                    if (x == exitX && y == exitY)
+                        continue;
+
+                    int distance = Math.Abs(x - 1) + Math.Abs(y - 1);
+
+                    if (distance > bestDistance)
+                    {
+                        bestDistance = distance;
+                        bestX = x;
+                        bestY = y;
+                    }
+                }
+            }
+
+            hallPassX = bestX;
+            hallPassY = bestY;
+            hallPassCollected = false;
+
+            currentExplorerName =
+                explorerNames[random.Next(explorerNames.Length)];
+
+            ShowNotification(
+                $"Missing Vapor Report:\n" +
+                $"{currentExplorerName}'s Hall Pass detected.");
+        }
+        private void DrawHallPassLight(double width, double height)
+        {
+            if (hallPassCollected)
+                return;
+
+            double dx =
+                hallPassX + 0.5 - playerX;
+
+            double dy =
+                hallPassY + 0.5 - playerY;
+
+            double distance =
+                Math.Sqrt(dx * dx + dy * dy);
+
+            if (distance < 4)
+            {
+                ShowNotification(
+                    "You sense traces of another explorer...",
+                    30);
+            }
+            
+            if (distance > 3.0)
+                return;
+
+            if (!HasLineOfSightToHallPass())
+                return;
+    
+            double angle =
+                Math.Atan2(dy, dx) -
+                playerAngle;
+
+            while (angle < -Math.PI)
+                angle += Math.PI * 2;
+
+            while (angle > Math.PI)
+                angle -= Math.PI * 2;
+
+            double fov = Math.PI / 7;
+
+            if (Math.Abs(angle) > fov / 2)
+                return;
+
+            double screenX =
+                (angle / (fov / 2) + 1) *
+                (width / 2);
+
+            double size =
+                Math.Max(10,
+                140 / (distance + 0.5));
+
+            Rectangle card = new Rectangle
+            {
+                Width = size * 0.6,
+                Height = size,
+                RadiusX = 3,
+                RadiusY = 3,
+
+                Fill = Brushes.Gold
+            };
+
+            Canvas.SetLeft(
+                card,
+                screenX - card.Width / 2);
+
+            Canvas.SetTop(
+                card,
+                height / 2 - card.Height / 2);
+
+            GameCanvas.Children.Add(card);
+        }
+
+        private bool HasLineOfSightToHallPass()
+        {
+            double dx = (hallPassX + 0.5) - playerX;
+            double dy = (hallPassY + 0.5) - playerY;
+
+            double distance = Math.Sqrt(dx * dx + dy * dy);
+
+            double stepX = dx / distance;
+            double stepY = dy / distance;
+
+            double x = playerX;
+            double y = playerY;
+
+            for (double i = 0; i < distance; i += 0.05)
+            {
+                x += stepX * 0.05;
+                y += stepY * 0.05;
+
+                int mx = (int)x;
+                int my = (int)y;
+
+                if (mx < 0 || my < 0 ||
+                    mx >= MapWidth || my >= MapHeight)
+                    return false;
+
+                if (map[my, mx] == 1)
+                    return false;
+            }
+
+            return true;
         }
 
         private void UpdateMapSize()
@@ -1092,6 +1290,7 @@ namespace WPF_Game_NET
             string name = string.IsNullOrWhiteSpace(leaderboardNameInput)
                 ? "ANONYMOUS"
                 : leaderboardNameInput;
+                escapedExplorerName = name;
 
             leaderboard.Add(new LeaderboardEntry
             {
@@ -1223,22 +1422,34 @@ namespace WPF_Game_NET
                 playerY = newY;
             }
 
+            if (!hallPassCollected &&
+                (int)playerX == hallPassX &&
+                (int)playerY == hallPassY)
+            {
+                hallPassCollected = true;
+                recoveredPasses.Add($"{currentExplorerName} - Level {currentLevel}");
+
+                ShowNotification(
+                    $"Recovered Hall Pass\n" +
+                    $"{currentExplorerName}");
+            }
+
             if ((int)playerX == exitX && (int)playerY == exitY)
             { 
+                if (!hallPassCollected)
+                {
+                    ShowNotification(
+                        "Exit Locked\n" +
+                        "Hall Pass Required");
+
+                    return;
+                }
+
                 mazesCompleted++;
 
                 if (currentLevel >= 50)
                 {
-                    gameTimer.Stop();
-
-                    ShowNotification(
-                        "CONGRATULATIONS!\n" +
-                        "You escaped Vape Scape!\n" +
-                        $"Mazes Completed: {mazesCompleted}",
-                        600);
-
-                    gameState = GameState.Menu;
-                    ShowMainMenu();
+                    GameEnd();
                     return;
                 }
 
@@ -1259,9 +1470,259 @@ namespace WPF_Game_NET
                 moveRight = false;
 
                 showMap = false;
+                showJournal = false;
             }  
         }
 
+        private void GameEnd()
+        {
+            gameTimer.Stop();
+
+            moveForward = false;
+            moveBackward = false;
+            moveLeft = false;
+            moveRight = false;
+
+            leaderboardNameInput = "";
+            leaderboardPromptVisible = true;
+
+            gameState = GameState.Ending;
+
+            ShowEndingScreen();
+        }
+
+        private void ShowEndingScreen()
+        {
+            SetGameplayUIVisible(false); 
+            GameCanvas.Children.Clear();
+
+            Rectangle bg = new Rectangle
+            {
+                Width = ActualWidth,
+                Height = ActualHeight,
+                Fill = Brushes.Black
+            };
+
+            GameCanvas.Children.Add(bg);
+
+            StackPanel content = new StackPanel
+            {
+                Orientation = Orientation.Vertical,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+
+            TextBlock endingText = new TextBlock
+            {
+                Text =
+                    "YOU ESCAPED VAPE SCAPE\n\n" +
+                    "Few explorers make it this far.\n\n" +
+                    $"Mazes Completed: {mazesCompleted}\n\n" +
+                    "Claim your place in the Hall of Vapors.\n" +
+                    "Submit your name and press ENTER:",
+
+                Foreground = Brushes.White,
+                FontSize = 14,
+                TextAlignment = TextAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 20)
+            };
+
+            content.Children.Add(endingText);
+
+            Border inputBox = new Border
+            {
+                Width = 300,
+                Height = 50,
+                Background = new SolidColorBrush(Color.FromRgb(25, 25, 25)),
+                BorderBrush = Brushes.White,
+                BorderThickness = new Thickness(1)
+            };
+
+            TextBlock inputText = new TextBlock
+            {
+                Text = string.IsNullOrEmpty(leaderboardNameInput)
+                    ? "_"
+                    : ToSentenceCase(leaderboardNameInput), 
+
+                Foreground = Brushes.LightGreen,
+                FontSize = 16,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextAlignment = TextAlignment.Center
+            };
+
+            inputBox.Child = inputText;
+
+            content.Children.Add(inputBox);
+
+            content.Measure(
+                new Size(
+                    double.PositiveInfinity,
+                    double.PositiveInfinity));
+
+            Canvas.SetLeft(
+                content,
+                (ActualWidth - content.DesiredSize.Width) / 2);
+
+            Canvas.SetTop(
+                content,
+                (ActualHeight - content.DesiredSize.Height) / 2);
+
+            GameCanvas.Children.Add(content);
+        }
+
+        private void ShowLostJournalScreen()
+        {
+            SetGameplayUIVisible(false); 
+            GameCanvas.Children.Clear();
+            isInputLocked = true;
+
+            Rectangle bg = new Rectangle
+            {
+                Width = ActualWidth,
+                Height = ActualHeight,
+                Fill = Brushes.Black
+            };
+
+            GameCanvas.Children.Add(bg);
+
+            StackPanel content = new StackPanel
+            {
+                Orientation = Orientation.Vertical,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+
+            DrawJournalOverlay();
+
+            TextBlock endingText = new TextBlock
+            {
+                Text =
+                    "…this entry was never meant to be read\n" +
+                    "but it is being shown anyway.\n\n" +
+                    "The journal is no longer passive.\n" +
+                    "Something is choosing what exists.\n\n" +
+                    "Do not trust what remains.\n",
+
+                Foreground = Brushes.White,
+                FontSize = 15,
+                TextAlignment = TextAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 20)
+            };  
+
+            endingText.Opacity = 0;
+            endingText.RenderTransformOrigin = new Point(0.5, 0.5);
+
+            var transform = new ScaleTransform(1.0, 1.0);
+            endingText.RenderTransform = transform;
+
+            var fadeIn = new DoubleAnimation
+            {
+                From = 0,
+                To = 1,
+                Duration = TimeSpan.FromSeconds(2),
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseIn }
+            };
+
+            Storyboard.SetTarget(fadeIn, endingText);
+            Storyboard.SetTargetProperty(fadeIn, new PropertyPath(TextBlock.OpacityProperty));
+
+            var scaleX = new DoubleAnimation
+            {
+                From = 1.0,
+                To = 1.03,
+                Duration = TimeSpan.FromSeconds(3),
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever
+            };
+
+            var scaleY = scaleX.Clone();
+
+            Storyboard.SetTarget(scaleX, endingText);
+            Storyboard.SetTarget(scaleY, endingText);
+
+            Storyboard.SetTargetProperty(scaleX, new PropertyPath("RenderTransform.ScaleX"));
+            Storyboard.SetTargetProperty(scaleY, new PropertyPath("RenderTransform.ScaleY"));
+
+            var sb = new Storyboard();
+            sb.Children.Add(fadeIn);
+            sb.Children.Add(scaleX);
+            sb.Children.Add(scaleY);
+
+            sb.Begin();
+
+            var flickerTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(120)
+            };
+
+            var rand = new Random();
+
+            flickerTimer.Tick += (s, e) =>
+            {
+                double baseOpacity = 1.0;
+
+                double flicker = rand.NextDouble() > 0.85
+                    ? rand.NextDouble() * 0.4
+                    : 0;
+
+                endingText.Opacity = baseOpacity - flicker;
+            };
+
+            flickerTimer.Start();
+
+            content.Children.Add(endingText);  
+
+            content.Measure(
+                new Size(
+                    double.PositiveInfinity,
+                    double.PositiveInfinity));
+
+            Canvas.SetLeft(
+                content,
+                (ActualWidth - content.DesiredSize.Width) / 2);
+
+            Canvas.SetTop(
+                content,
+                (ActualHeight - content.DesiredSize.Height) / 2);
+
+            GameCanvas.Children.Add(content);
+
+            var returnTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMinutes(1)
+            };
+
+            returnTimer.Tick += (s, e) =>
+            {
+                returnTimer.Stop();
+                isInputLocked = false;
+                gameState = GameState.Menu;
+                ShowMainMenu();
+            };
+
+            returnTimer.Start();
+        }
+
+        private string ToSentenceCase(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input))
+                return string.Empty;
+
+            input = input.Trim().ToLower();
+
+            string[] words = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            for (int i = 0; i < words.Length; i++)
+            {
+                if (words[i].Length > 0)
+                {
+                    words[i] =
+                        char.ToUpper(words[i][0]) +
+                        words[i].Substring(1);
+                }
+            }
+
+            return string.Join(" ", words);
+        }
         private void RenderScene()
         {
             GameCanvas.Children.Clear();
@@ -1383,6 +1844,7 @@ namespace WPF_Game_NET
                 DrawExitLight(width, height);
             }
 
+            DrawHallPassLight(width, height);
             DrawVapeGlow(width, height); 
             DrawVolumetricFog(width, height);
 
@@ -1412,6 +1874,11 @@ namespace WPF_Game_NET
             if (showMap)
             {
                 DrawMapOverlay();
+            }
+
+            if (showJournal)
+            {
+                DrawJournalOverlay();
             }
 
             DrawNotification();
@@ -1540,6 +2007,184 @@ namespace WPF_Game_NET
                     ShowNotification($"Map Charge Earned! ({mapCharges} available)");
                     break;
             }
+        }
+
+        private void DrawJournalOverlay()
+        {   
+            int entryCount =
+                (recoveredPasses?.Count ?? 0) +
+                (gameState == GameState.Ending ? explorerNames.Length : 0) +
+                2; 
+
+            double baseHeight = 80;
+            double entryHeight = 18; 
+            double computedHeight = baseHeight + (entryCount * entryHeight);
+
+            double finalHeight = Math.Min(computedHeight, 500); 
+
+            Border panel = new Border
+            {
+                Width = 300,
+                Height = finalHeight,
+                Background = new SolidColorBrush(Color.FromArgb(200, 0, 0, 0)),
+                BorderBrush = Brushes.White,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8)
+            };
+
+            ScrollViewer scroll = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+            };
+
+            StackPanel content = new StackPanel
+            {
+                Margin = new Thickness(10)
+            };
+
+            content.Children.Add(new TextBlock
+            {
+                Text = "Missing Vapors Journal",
+                Foreground = Brushes.Gold,
+                FontSize = 16,
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 0, 0, 10)
+            });
+
+            if (recoveredPasses?.Count == 0 && gameState != GameState.Ending)
+            {
+                content.Children.Add(new TextBlock
+                {
+                    Text = "No Hall Passes recovered.",
+                    Foreground = Brushes.White,
+                    FontSize = 12
+                });
+            }   
+            else
+            {
+                foreach (string pass in recoveredPasses!.TakeLast(10).Reverse())
+                {
+                    content.Children.Add(new TextBlock
+                    {
+                        Text = pass,
+                        Foreground = Brushes.White,
+                        FontSize = 12,
+                        TextWrapping = TextWrapping.Wrap
+                    });
+                }
+            }
+
+            if (gameState == GameState.Ending)
+            {
+                int recoveredCount = recoveredPasses?.Count ?? 0;
+                int fillerCount = Math.Max(0, 50 - recoveredCount);
+
+                foreach (string entry in GenerateExplorerEntries(fillerCount))
+                {
+                    bool isPlayerEntry =
+                        !string.IsNullOrWhiteSpace(escapedExplorerName) &&
+                        entry.StartsWith(
+                            ToSentenceCase(escapedExplorerName),
+                            StringComparison.OrdinalIgnoreCase);
+
+                    var tb = new TextBlock
+                    {
+                        Text = entry,
+                        Foreground = isPlayerEntry ? Brushes.Silver : Brushes.Gray,
+                        FontWeight = isPlayerEntry ? FontWeights.Bold : FontWeights.Normal,
+                        Margin = new Thickness(0, 2, 0, 0),
+                        TextWrapping = TextWrapping.Wrap
+                    };
+
+                    if (isPlayerEntry)
+                    {
+                        var rand = new Random();
+
+                        var flickerTimer = new System.Windows.Threading.DispatcherTimer
+                        {
+                            Interval = TimeSpan.FromMilliseconds(60)
+                        };
+
+                        flickerTimer.Tick += (s, e) =>
+                        {
+                            tb.Opacity = rand.NextDouble() > 0.15 ? 1.0 : rand.Next(2) * 0.3;
+                        };
+
+                        flickerTimer.Start();
+                    }
+
+                    content.Children.Add(tb);
+                } 
+            }
+            
+            scroll.Content = content;
+            panel.Child = scroll;
+
+            Canvas.SetLeft(panel, ActualWidth - panel.Width - 20);
+            Canvas.SetTop(panel, ActualHeight - panel.Height - 40);
+
+            GameCanvas.Children.Add(panel);
+        } 
+        private List<string> GenerateExplorerEntries(int maxLevel)
+        {   
+            Random rng = new Random();
+
+            List<string> entries = new();
+
+            HashSet<int> existingLevels = new();
+
+            foreach (string pass in recoveredPasses)
+            {
+                Match match = Regex.Match(pass, @"Level\s+(\d+)");
+
+                if (match.Success)
+                {
+                    existingLevels.Add(
+                        int.Parse(match.Groups[1].Value));
+                }
+            }
+
+            bool playerNameAdded = false;
+
+            for (int level = 1; level <= maxLevel; level++)
+            {
+                if (existingLevels.Contains(level))
+                    continue;
+
+                string first;
+                string last;
+
+                if (!playerNameAdded &&
+                    !string.IsNullOrWhiteSpace(escapedExplorerName))
+                {
+                    string playerName =
+                        ToSentenceCase(escapedExplorerName).Trim();
+
+                    string[] parts =
+                        playerName.Split(
+                            ' ',
+                            StringSplitOptions.RemoveEmptyEntries);
+
+                    first = parts[0];
+
+                    last =
+                        parts.Length > 1
+                        ? string.Join(" ", parts.Skip(1))
+                        : lastNames[rng.Next(lastNames.Length)];
+
+                    playerNameAdded = true;
+                }
+                else
+                {
+                    first = firstNames[rng.Next(firstNames.Length)];
+                    last = lastNames[rng.Next(lastNames.Length)];
+                }
+
+                entries.Add($"{first} {last} - Level {level}");
+            }
+
+            return entries;
         }
 
         private void DrawNotification()
@@ -1832,13 +2477,65 @@ namespace WPF_Game_NET
 
             return 20;
         }
-
+ 
         private void Window_KeyDown(object? sender, KeyEventArgs e)
         {
             if (gameState == GameState.Splash)
             {
                 ExitSplash();
                 return;
+            }
+
+            if (gameState == GameState.Ending)
+            {
+                if (isInputLocked)
+                return;
+                
+                if (e.Key == Key.Enter)
+                { 
+                    leaderboardNameInput = ToSentenceCase(leaderboardNameInput);
+                    SubmitLeaderboardEntry();
+                    leaderboard.RemoveAt(leaderboard.Count - 1);
+            
+                    ShowLostJournalScreen();
+                    return;
+                }
+
+                if (e.Key == Key.Back &&
+                    leaderboardNameInput.Length > 0)
+                { 
+                    leaderboardNameInput =
+                        leaderboardNameInput[..^1];
+
+                    ShowEndingScreen();
+                    return;
+                }
+
+                if (e.Key == Key.Space)
+                {
+                    if (!string.IsNullOrWhiteSpace(leaderboardNameInput) &&
+                        !leaderboardNameInput.EndsWith(" "))
+                    {
+                        leaderboardNameInput += " ";
+                        ShowEndingScreen();
+                    }
+
+                    return;
+                }
+
+                if (e.Key >= Key.A && e.Key <= Key.Z)
+                { 
+                    leaderboardNameInput += e.Key.ToString();
+                    ShowEndingScreen();
+                    return;
+                }
+
+                if (e.Key >= Key.D0 && e.Key <= Key.D9)
+                {
+                    leaderboardNameInput += e.Key.ToString().Last();
+                    ShowEndingScreen();
+                    return;
+                }
             }
 
             if (e.Key == Key.C)
@@ -1902,6 +2599,11 @@ namespace WPF_Game_NET
                 {
                     ShowNotification("No map charges remaining!");
                 }
+            }
+
+            if (e.Key == Key.J && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+            {
+                showJournal = !showJournal;
             }
 
             if (leaderboardPromptVisible)
