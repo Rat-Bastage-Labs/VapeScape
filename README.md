@@ -86,6 +86,7 @@
 | Space    | Activate Vape Light   |
 | Shift    | Release Smoke Cloud   |
 | Ctrl + P | Use Map Charge        |
+| Ctrl + J | Toggle Journal        |
 | C        | Toggle Controls Panel |
 ---
 
