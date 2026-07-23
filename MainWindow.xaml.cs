@@ -118,7 +118,7 @@ namespace WPF_Game_NET
 
         private int vapeFailureLevel;
 
-        private const int VapeFailureMinutes = 10;
+        private const int VapeFailureMinutes =  10;
         private const int VapeFailureLevels = 2;
         private bool hasSmokeLoaded = false;
         private readonly List<VapeCloud> clouds = new();
@@ -2148,6 +2148,7 @@ namespace WPF_Game_NET
             showMap = false;
             showJournal = false;
             ControlsPanel.Visibility = Visibility.Collapsed;
+            ResetVapeStats();
 
             gameState = GameState.GameOver; 
         }
@@ -2161,6 +2162,7 @@ namespace WPF_Game_NET
             showMap = false;
             showJournal = false;
             ControlsPanel.Visibility = Visibility.Collapsed;
+            ResetVapeStats();
 
             leaderboardNameInput = "";
             leaderboardPromptVisible = true;
@@ -2193,13 +2195,11 @@ namespace WPF_Game_NET
                 Text =
                     "YOUR VAPE HAS FAILED\n\n" +
 
-                    "The light fades.\n\n" +
+                    "The last glow fades into the fog...\n\n" +
 
-                    "The smoke clears.\n\n" +
+                    "The smoke escapes into the darkness...\n\n" +
 
-                    "The maze seals itself around you.\n\n" +
-
-                    $"Explorer:\n{escapedExplorerName}\n\n" +
+                    "The maze seals itself around you.\n\n\n" +
 
                     $"Level Reached: {currentLevel}\n\n" +
 
@@ -3343,6 +3343,19 @@ namespace WPF_Game_NET
             CoilText.Text = $"Coil: {coilCondition}";
         }
 
+        private void ResetVapeStats()
+        {
+            battery = 100;
+            liquid = 100;
+            coil = 100;
+
+            vapeDead = false;
+            vapeFailureActive = false;
+            vapeDrainCounter = 0;
+
+            UpdateVapeStats();
+        }
+
         private readonly BitmapImage vapeImage = new BitmapImage(
         new Uri("https://images.vexels.com/media/users/3/220986/isolated/preview/e6ca9612ae8fe7560dec17409807f9f9-vape-e-cigarette-black.png")); 
 
@@ -3433,11 +3446,14 @@ namespace WPF_Game_NET
         }
 
         private void UpdateVapeFailure()
-        {
-            bool depleted =
-                battery <= 0 ||
-                liquid <= 0 ||
-                coil <= 0;
+        { 
+            int failedParts = 0;
+
+            if (battery <= 0) failedParts++;
+            if (liquid <= 0) failedParts++;
+            if (coil <= 0) failedParts++;
+
+            bool depleted = failedParts >= 2;
 
             if (!depleted)
             {
