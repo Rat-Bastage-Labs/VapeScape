@@ -22,6 +22,7 @@ namespace WPF_Game_NET
         private bool showPressAnyKey = false;
         private DispatcherTimer gameTimer;
         private int[,] map  = null!;
+        private int[,]? previousMap;
 
         private int MapWidth = 12;
         private int MapHeight = 12;
@@ -34,6 +35,42 @@ namespace WPF_Game_NET
         private int exitY;
         private int hallPassX;
         private int hallPassY;
+
+        private bool vapeDeadZoneActive = false;
+
+        private int vapeDeadZoneX;
+        private int vapeDeadZoneY;
+
+        private double vapeDeadZoneRadius = 2.5;
+
+        private int vapeDrainCounter = 0;
+        private bool hallucinationZoneActive = false;
+        private double hallucinationIntensity = 0;
+        private int hallucinationSeed = 0;
+        private int hallucinationTimer = 0;
+        private int smokePlumesSinceClear = 0;
+
+        private bool mazeShifting = false;
+        private int mazeShiftFrames = 0;
+
+        private DispatcherTimer echoMazeTimer = null!;
+        
+        private readonly List<(int x, int y)> playerHistory = new();
+
+        private bool memoryLoopActive = false;
+        private int memoryLoopTimer = 0;
+
+        private List<(int x, int y)> loopSequence = new();
+
+        private int memoryLoopCooldown = 0;
+
+        private Random loopRandom = new();
+        private int loopTeleportCooldown = 0;
+
+        private (int x, int y) teleportStart;
+        private (int x, int y) teleportEnd;
+
+        private double shakeIntensity = 0;
 
         private bool hallPassCollected = false;
         private readonly List<string> recoveredPasses = new();
@@ -75,6 +112,14 @@ namespace WPF_Game_NET
         private int liquid = 100;
         private int coil = 100;
         private bool vapeDead = false;
+        private bool vapeFailureActive = false;
+
+        private DateTime vapeFailureStart;
+
+        private int vapeFailureLevel;
+
+        private const int VapeFailureMinutes = 10;
+        private const int VapeFailureLevels = 2;
         private bool hasSmokeLoaded = false;
         private readonly List<VapeCloud> clouds = new();
         private const double CloudSpeed = 0.06;
@@ -328,7 +373,8 @@ namespace WPF_Game_NET
             Guide,
             Leaderboard,
             About,
-            Ending
+            Ending,
+            GameOver
         }
 
         private GameState gameState = GameState.Menu;
@@ -608,6 +654,7 @@ namespace WPF_Game_NET
             SetGameplayUIVisible(true); 
             GenerateDungeon();
             gameTimer.Start(); 
+            StartEchoMaze();
         }
 
         public MainWindow()
@@ -802,6 +849,7 @@ namespace WPF_Game_NET
             Carve(1, 1); 
             GenerateExit();
             GenerateHallPass();
+            GenerateVapeDeadZone();
 
             playerX = 1.5;
             playerY = 1.5;
@@ -858,6 +906,44 @@ namespace WPF_Game_NET
             exitY = bestY;
         }
 
+        private void GenerateVapeDeadZone()
+        {
+            vapeDeadZoneActive = false;
+
+            if (random.NextDouble() > 0.13)
+                return;
+
+            while (true)
+            {
+                int x = random.Next(1, MapWidth - 1);
+                int y = random.Next(1, MapHeight - 1);
+
+                if (map[y, x] != 0)
+                    continue;
+
+                if ((x == 1 && y == 1) ||
+                    (x == exitX && y == exitY) ||
+                    (x == hallPassX && y == hallPassY))
+                    continue;
+
+                vapeDeadZoneX = x;
+                vapeDeadZoneY = y;
+                vapeDeadZoneActive = true; 
+                break;
+            }
+        }
+
+        private bool PlayerInsideVapeDeadZone()
+        {
+            if (!vapeDeadZoneActive)
+                return false;
+
+            double dx = playerX - (vapeDeadZoneX + 0.5);
+            double dy = playerY - (vapeDeadZoneY + 0.5);
+
+            return Math.Sqrt(dx * dx + dy * dy) <= vapeDeadZoneRadius;
+        }
+
         private string[] explorerNames = Array.Empty<string>();
 
         private void GenerateExplorerNames()
@@ -874,6 +960,501 @@ namespace WPF_Game_NET
 
             explorerNames = names.ToArray();
         } 
+
+        private void StartEchoMaze()
+        {
+            if (echoMazeTimer != null)
+                return;
+
+
+            echoMazeTimer = new DispatcherTimer();
+
+            echoMazeTimer.Interval =
+                TimeSpan.FromSeconds(
+                    GetEchoShiftInterval()
+                );
+
+
+            echoMazeTimer.Tick += (s,e)=>
+            {
+               double chance = random.NextDouble();
+
+                if (chance < GetMazeShiftChance())
+                {
+                    BeginMazeShift();
+                }
+
+                echoMazeTimer.Interval =
+                    TimeSpan.FromSeconds(
+                        GetEchoShiftInterval()
+                    );
+            };
+
+
+            echoMazeTimer.Start();
+        }
+
+        private double GetMazeShiftChance()
+        {
+            if(currentLevel <= 10)
+                return 0.35;  
+
+            if(currentLevel <= 20)
+                return 0.45;
+
+            if(currentLevel <= 35)
+                return 0.60;
+
+            return 0.75;
+        }
+
+        private double GetEchoShiftInterval()
+        {
+            if(currentLevel <= 10)
+                return random.Next(90, 150);
+
+            if(currentLevel <=20)
+                return random.Next(70, 120); 
+
+            if(currentLevel <=35)
+                return random.Next(50, 90);
+
+             return random.Next(35, 70);
+        }
+
+        private void BeginMazeShift()
+        {
+            if(mazeShifting)
+                return;
+
+
+            mazeShifting=true;
+            mazeShiftFrames=300; 
+            shakeIntensity=8;
+
+            ShowNotification(
+                "The maze shifts..."
+            );
+
+            PerformMazeShift();
+
+            if(random.NextDouble()<GetExitMoveChance())
+            {
+                RelocateExit();
+            }
+        }
+
+        private double GetExitMoveChance()
+        {
+            if(currentLevel < 21)
+                return 0;
+
+            if(currentLevel < 36)
+                return .20;
+
+            return .30;
+        }
+
+        private void UpdateEchoMazeEffects()
+        {
+
+            if(mazeShiftFrames>0)
+            {
+                mazeShiftFrames--;
+
+                shakeIntensity*=0.98;
+
+
+                if(mazeShiftFrames<=0)
+                {
+                    mazeShifting=false;
+                    shakeIntensity=0;
+                }
+            }
+
+        } 
+
+        private void PerformMazeShift()
+        {
+            previousMap = (int[,])map.Clone();
+            int changes = GetShiftAmount();
+
+            for(int i = 0; i < changes; i++)
+            {
+                int x = random.Next(1, MapWidth - 1);
+                int y = random.Next(1, MapHeight - 1);
+
+                if(x == 1 && y == 1)
+                    continue;
+
+                if(x == exitX &&
+                y == exitY)
+                    continue;
+
+                if(x == hallPassX &&
+                y == hallPassY)
+                    continue;
+
+
+                ToggleCorridor(x,y);
+            }
+
+            int playerTileX = (int)playerX;
+            int playerTileY = (int)playerY;
+
+
+            if(map[playerTileY, playerTileX] == 1)
+            {
+                RestorePreviousMaze();
+
+                ShowNotification(
+                    "The maze rejects the shift..."
+                );
+
+                return;
+            }
+
+
+            if(!MazeIsConnected())
+            {
+                RestorePreviousMaze();
+                ShowNotification(
+                    "The maze rejects the shift..."
+                );
+            }
+            else
+            {
+                ShowNotification(
+                    "The maze shifts..."
+                );
+            }
+        }
+
+    private void RestorePreviousMaze()
+    {
+        if(previousMap == null)
+            return;
+
+
+        map = (int[,])previousMap.Clone();
+    }
+
+        private int GetShiftAmount()
+        {
+            if(currentLevel<=10)
+                return random.Next(2,4);
+
+
+            if(currentLevel<=20)
+                return random.Next(4,7);
+
+
+            if(currentLevel<=35)
+                return random.Next(6,11);
+
+
+            return random.Next(8,15);
+        }
+
+        private void ToggleCorridor(int x,int y)
+        {
+
+            int old = map[y,x];
+
+            if(old==1)
+            {
+                int neighbors=0;
+
+
+                if(map[y+1,x]==0)
+                    neighbors++;
+
+                if(map[y-1,x]==0)
+                    neighbors++;
+
+                if(map[y,x+1]==0)
+                    neighbors++;
+
+                if(map[y,x-1]==0)
+                    neighbors++;
+
+
+                if(neighbors>=2)
+                {
+                    map[y,x]=0;
+                }
+
+            }
+
+            else
+            {
+
+                int exits=0;
+
+
+                if(map[y+1,x]==0)
+                    exits++;
+
+                if(map[y-1,x]==0)
+                    exits++;
+
+                if(map[y,x+1]==0)
+                    exits++;
+
+                if(map[y,x-1]==0)
+                    exits++;
+
+                if(exits<=1)
+                    return;
+
+
+                map[y,x]=1;
+            }
+
+        } 
+
+        private void RelocateExit()
+        {
+
+            int oldX=exitX;
+            int oldY=exitY;
+
+            GenerateExit();
+
+            if(
+                Math.Abs(exitX-playerX)<5 &&
+                Math.Abs(exitY-playerY)<5)
+            {
+                exitX=oldX;
+                exitY=oldY;
+                return;
+            }
+
+            ShowNotification(
+                "The exit has moved."
+            );
+
+        }
+        private bool MazeIsConnected()
+        {
+
+            bool[,] visited =
+                new bool[MapHeight,MapWidth];
+
+
+            Queue<(int,int)> queue=new();
+            queue.Enqueue((1,1));
+            visited[1,1]=true;
+
+            while(queue.Count>0)
+            {
+                var p=queue.Dequeue();
+
+                int[] dx =
+                {
+                    1,-1,0,0
+                };
+
+                int[] dy =
+                {
+                    0,0,1,-1
+                };
+
+                for(int i=0;i<4;i++)
+                {
+
+                    int nx=p.Item1+dx[i];
+                    int ny=p.Item2+dy[i];
+
+                    if(nx<0||
+                    ny<0||
+                    nx>=MapWidth||
+                    ny>=MapHeight)
+                    continue;
+
+                    if(visited[ny,nx])
+                        continue;
+
+                    if(map[ny,nx]==1)
+                        continue;
+
+
+                    visited[ny,nx]=true;
+
+                    queue.Enqueue((nx,ny));
+                }
+
+            }
+
+            return visited[exitY,exitX] && visited[hallPassY,hallPassX];
+
+        }
+
+        private void TrackPlayerHistory()
+        {
+            if(currentLevel < 20 || currentLevel > 40)
+                return;
+
+            int tileX = (int)playerX;
+            int tileY = (int)playerY;
+
+
+            if(playerHistory.Count > 0)
+            {
+                var last = playerHistory[^1];
+
+                if(last.x == tileX &&
+                last.y == tileY)
+                    return;
+            }
+
+            playerHistory.Add((tileX,tileY));
+
+            if(playerHistory.Count > 80)
+                playerHistory.RemoveAt(0);
+
+
+            CheckForMemoryLoop();
+        }
+
+        private void CheckForMemoryLoop()
+        {
+            if(memoryLoopActive)
+                return;
+
+
+            if(playerHistory.Count < 18)
+                return;
+
+
+            int length = loopRandom.Next(6,10);
+
+
+            var recent =
+                playerHistory
+                .Skip(playerHistory.Count-length)
+                .ToList();
+
+
+            int previousStart =
+                playerHistory.Count - (length * 2);
+
+
+            if(previousStart < 0)
+                return;
+
+
+            var previous =
+                playerHistory
+                .Skip(previousStart)
+                .Take(length)
+                .ToList();
+
+
+
+            bool same = true;
+
+
+            for(int i=0;i<length;i++)
+            {
+                if(recent[i] != previous[i])
+                {
+                    same=false;
+                    break;
+                }
+            }
+
+
+            if(same)
+            {
+                ActivateMemoryLoop(previous);
+            }
+        }
+
+        private void ActivateMemoryLoop(List<(int,int)> sequence)
+        {
+            if(memoryLoopCooldown > 0) return;
+
+            memoryLoopActive = true;
+            memoryLoopTimer = 600; 
+            loopSequence = sequence;
+            teleportStart = sequence[0];
+            teleportEnd = sequence[^1]; 
+            loopTeleportCooldown = 120;
+
+            ShowNotification(
+                "Something feels wrong..."
+            );
+        }
+
+        private void UpdateLoopTeleport()
+        {
+            if (!memoryLoopActive)
+                return;
+
+            if (loopTeleportCooldown > 0)
+            {
+                loopTeleportCooldown--;
+                return;
+            }
+
+            int tileX = (int)playerX;
+            int tileY = (int)playerY;
+
+            if (tileX == teleportEnd.x &&
+                tileY == teleportEnd.y)
+            {
+                playerX = teleportStart.x + 0.5;
+                playerY = teleportStart.y + 0.5;
+                loopTeleportCooldown = 90;
+
+                ShowNotification(
+                    "..."
+                );
+            }
+        }
+
+        private void UpdateMemoryLoop()
+        {
+            if(memoryLoopCooldown > 0)
+            {
+                memoryLoopCooldown--;
+            }
+
+            if(!memoryLoopActive)
+                return;
+
+            memoryLoopTimer--;
+
+            if(loopSequence.Count > 0)
+            {
+                var current =
+                    ((int)playerX,(int)playerY);
+
+                if(!loopSequence.Contains(current))
+                {
+                    BreakMemoryLoop();
+                    return;
+                }
+            }
+
+            if(memoryLoopTimer <=0)
+            {
+                BreakMemoryLoop();
+            }
+        }
+
+        private void BreakMemoryLoop()
+        {
+            memoryLoopActive=false;
+            loopSequence.Clear();
+            playerHistory.Clear();
+            memoryLoopCooldown = 900; 
+
+            ShowNotification(
+                "The corridor finally changes..."
+            );
+        }
         private void GenerateHallPass()
         {
             int bestX = -1;
@@ -1352,34 +1933,45 @@ namespace WPF_Game_NET
                 }
             }
         }
-
         private void GameLoop(object? sender, EventArgs e)
         {
-              if (gameState != GameState.Playing)
-              return;
-
-            if (notificationFrames > 0)
+            switch (gameState)
             {
-                notificationFrames--;
+                case GameState.Playing:
+
+                    if (notificationFrames > 0)
+                        notificationFrames--;
+
+                    UpdatePlayer();
+                    UpdateMemoryLoop();
+                    UpdateLoopTeleport();
+
+                    if (vaping)
+                    {
+                        vapeFrames--;
+
+                        glowMultiplier = 2.0;
+
+                        if (vapeFrames <= 0)
+                        {
+                            vaping = false;
+                            glowMultiplier = 1.0;
+                        }
+                    }
+
+                    UpdateClouds();
+                    UpdateEchoMazeEffects();
+                    RenderScene();
+                    break;
+
+                case GameState.Ending:
+                    ShowEndingScreen();
+                    break;
+
+                case GameState.GameOver:
+                    ShowGameOverScreen();
+                    break;
             }
-
-            UpdatePlayer();
-
-            if (vaping)
-            {
-                vapeFrames--;
-
-                glowMultiplier = 2.0;
-
-                if (vapeFrames <= 0)
-                {
-                    vaping = false;
-                    glowMultiplier = 1.0;
-                }
-            }
- 
-            UpdateClouds();
-            RenderScene();
         }
 
         private void UpdatePlayer()
@@ -1389,13 +1981,23 @@ namespace WPF_Game_NET
 
             if (moveForward)
             {
-                newX += Math.Cos(playerAngle) * MoveSpeed;
+                double speed =
+                mazeShifting ?
+                MoveSpeed * .45 :
+                MoveSpeed; 
+
+                newX += Math.Cos(playerAngle) * speed;
                 newY += Math.Sin(playerAngle) * MoveSpeed;
             }
 
             if (moveBackward)
             {
-                newX -= Math.Cos(playerAngle) * MoveSpeed;
+                double speed =
+                mazeShifting ?
+                MoveSpeed * .45 :
+                MoveSpeed;
+
+                newX += Math.Cos(playerAngle) * speed;
                 newY -= Math.Sin(playerAngle) * MoveSpeed;
             }
 
@@ -1434,6 +2036,8 @@ namespace WPF_Game_NET
                     $"{currentExplorerName}");
             }
 
+            UpdateVapeFailure();
+
             if ((int)playerX == exitX && (int)playerY == exitY)
             { 
                 if (!hallPassCollected)
@@ -1446,6 +2050,12 @@ namespace WPF_Game_NET
                 }
 
                 mazesCompleted++;
+
+                if (vapeFailureActive)
+                {
+                    GameOver();
+                    return;
+                }
 
                 if (currentLevel >= 50)
                 {
@@ -1472,23 +2082,155 @@ namespace WPF_Game_NET
                 showMap = false;
                 showJournal = false;
             }  
+
+            if (PlayerInsideVapeDeadZone())
+            {
+                vapeDrainCounter++;
+
+                if (vapeDrainCounter >= 60)
+                {
+                    vapeDrainCounter = 0;
+
+                    battery = Math.Max(0, battery - 1);
+                    liquid = Math.Max(0, liquid - 1);
+                    coil = Math.Max(0, coil - 1);
+
+                    UpdateVapeStats();
+                }
+            }
+            else
+            {
+                vapeDrainCounter = 0;
+            }
+
+            double smoke = CalculateLocalSmokeDensity();
+
+            bool heavyVapeState =
+                vaping || vapeCount % 20 > 15;
+
+            if (smokePlumesSinceClear >= 3 && smoke > 0.6 && heavyVapeState)
+            {
+                hallucinationZoneActive = true;
+
+                double levelFactor = 1.0 + (currentLevel * 0.015);
+
+                hallucinationIntensity = Math.Min(
+                    1.0,
+                    hallucinationIntensity + (0.01 * levelFactor)
+                );
+
+                hallucinationSeed = (int)DateTime.Now.Ticks;
+            }
+            else
+            {
+                hallucinationIntensity = Math.Max(0, hallucinationIntensity - 0.005);
+
+                if (hallucinationIntensity <= 0.05)
+                    hallucinationZoneActive = false;
+            }
+
+            if (hallucinationZoneActive)
+                hallucinationTimer++;
+            else
+                hallucinationTimer = 0;
+
+            TrackPlayerHistory();
+            
         }
 
-        private void GameEnd()
+        private void GameOver()
         {
-            gameTimer.Stop();
-
             moveForward = false;
             moveBackward = false;
             moveLeft = false;
             moveRight = false;
 
+            showMap = false;
+            showJournal = false;
+            ControlsPanel.Visibility = Visibility.Collapsed;
+
+            gameState = GameState.GameOver; 
+        }
+        private void GameEnd()
+        {
+            moveForward = false;
+            moveBackward = false;
+            moveLeft = false;
+            moveRight = false;
+
+            showMap = false;
+            showJournal = false;
+            ControlsPanel.Visibility = Visibility.Collapsed;
+
             leaderboardNameInput = "";
             leaderboardPromptVisible = true;
 
-            gameState = GameState.Ending;
+            gameState = GameState.Ending; 
+        }
 
-            ShowEndingScreen();
+        private void ShowGameOverScreen()
+        {
+            SetGameplayUIVisible(false);
+            GameCanvas.Children.Clear();
+
+            Rectangle bg = new Rectangle
+            {
+                Width = ActualWidth,
+                Height = ActualHeight,
+                Fill = Brushes.Black
+            };
+
+            GameCanvas.Children.Add(bg);
+
+            StackPanel content = new StackPanel
+            {
+                Orientation = Orientation.Vertical,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+
+            TextBlock gameOverText = new TextBlock
+            {
+                Text =
+                    "YOUR VAPE HAS FAILED\n\n" +
+
+                    "The light fades.\n\n" +
+
+                    "The smoke clears.\n\n" +
+
+                    "The maze seals itself around you.\n\n" +
+
+                    $"Explorer:\n{escapedExplorerName}\n\n" +
+
+                    $"Level Reached: {currentLevel}\n\n" +
+
+                    $"Mazes Completed: {mazesCompleted}\n\n" +
+
+                    $"Recovered Hall Passes: {recoveredPasses.Count}\n\n" +
+
+                    "Press ENTER to Return to Menu",
+
+                Foreground = Brushes.White,
+                FontSize = 16,
+                TextAlignment = TextAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 20)
+            };
+
+            content.Children.Add(gameOverText);
+
+            content.Measure(
+                new Size(
+                    double.PositiveInfinity,
+                    double.PositiveInfinity));
+
+            Canvas.SetLeft(
+                content,
+                (ActualWidth - content.DesiredSize.Width) / 2);
+
+            Canvas.SetTop(
+                content,
+                (ActualHeight - content.DesiredSize.Height) / 2);
+
+            GameCanvas.Children.Add(content);
         }
 
         private void ShowEndingScreen()
@@ -1833,6 +2575,15 @@ namespace WPF_Game_NET
                             (byte)(shade)))
                 };
 
+                if(memoryLoopActive)
+                {
+                    shade =
+                        (byte)Math.Max(
+                            0,
+                            shade + Math.Sin(
+                                Environment.TickCount * 0.01) * 20);
+                }
+
                 Canvas.SetLeft(wall, x);
                 Canvas.SetTop(wall, top);
 
@@ -1871,6 +2622,43 @@ namespace WPF_Game_NET
             DrawClouds(width, height);
             GameCanvas.Children.Add(vignette);
 
+            if (hallucinationZoneActive)
+            {
+                Rectangle distortion = new Rectangle
+                {
+                    Width = width,
+                    Height = height,
+                    Fill = new SolidColorBrush(Color.FromArgb(
+                        (byte)(40 * hallucinationIntensity),
+                        120,
+                        180,
+                        255))
+                };
+
+                GameCanvas.Children.Add(distortion);
+            }
+
+            if(memoryLoopActive)
+            {
+                Rectangle loopEffect =
+                    new Rectangle
+                    {
+                        Width = width,
+                        Height = height,
+
+                        Fill =
+                        new SolidColorBrush(
+                            Color.FromArgb(
+                                35,
+                                120,
+                                120,
+                                120))
+                    };
+
+
+                GameCanvas.Children.Add(loopEffect);
+            }
+
             if (showMap)
             {
                 DrawMapOverlay();
@@ -1881,14 +2669,179 @@ namespace WPF_Game_NET
                 DrawJournalOverlay();
             }
 
+            if(mazeShifting)
+            {
+                Rectangle dust =
+                new Rectangle
+                {
+                    Width=width,
+                    Height=height,
+                    Fill=
+                    new SolidColorBrush(
+                        Color.FromArgb(
+                            25,
+                            180,
+                            160,
+                            120))
+                };
+
+
+                GameCanvas.Children.Add(dust);
+            }
+
             DrawNotification();
 
             if (leaderboardPromptVisible)
             {   
                 DrawLeaderboardPrompt();
             }
+
+            if (PlayerInsideVapeDeadZone())
+            {
+                byte alpha = (byte)(
+                    55 +
+                    Math.Abs(Math.Sin(Environment.TickCount * 0.002)) * 25);
+
+                Rectangle interference = new Rectangle
+                {
+                    Width = width,
+                    Height = height,
+                    Fill = new SolidColorBrush(
+                        Color.FromArgb(alpha, 20, 5, 5))
+                };
+
+                GameCanvas.Children.Add(interference);
+            }
+
+            if (hallucinationZoneActive)
+            {
+                DrawHallucinationEchoes(width, height);
+                DrawFalseExitFlicker(width, height);
+            }
+            
         }
 
+        private void DrawHallucinationEchoes(double width, double height)
+        {
+            Random rng = new Random(hallucinationSeed);
+
+            int echoes = rng.NextDouble() < hallucinationIntensity
+                ? 1 + rng.Next(2)
+                : 0;
+
+            for (int i = 0; i < echoes; i++)
+            {
+                double angle = rng.NextDouble() * Math.PI * 2;
+                double distance = 260 + rng.NextDouble() * 160;
+
+                double screenX = width / 2 + Math.Cos(angle) * distance;
+                double screenY = height / 2 + Math.Sin(angle) * distance;
+
+                Canvas smoke = new Canvas();
+
+                byte baseAlpha = (byte)(70 * hallucinationIntensity * rng.NextDouble());
+
+                double coreX = 20 + rng.NextDouble() * 20;
+                double coreY = 20 + rng.NextDouble() * 40;
+
+                int blobs = 18 + rng.Next(10);
+
+                for (int b = 0; b < blobs; b++)
+                {
+                    double size = 18 + rng.NextDouble() * 50;
+
+                    double t = rng.NextDouble();
+
+                    double targetX = coreX + Math.Sin(b * 0.6) * 10;
+                    double targetY = coreY + b * 2.2;
+
+                    double x = rng.Next(-25, 45) * (1 - t) + targetX * t;
+                    double y = rng.Next(-30, 80) * (1 - t) + targetY * t;
+
+                    double density = 1.0 - Math.Abs(b - blobs / 2.0) / blobs;
+                    byte alpha = (byte)(baseAlpha * density * rng.NextDouble());
+
+                    Ellipse puff = new Ellipse
+                    {
+                        Width = size * (0.6 + rng.NextDouble() * 0.5),
+                        Height = size * (1.4 + rng.NextDouble() * 1.2),
+
+                        Fill = new SolidColorBrush(Color.FromArgb(
+                            alpha,
+                            8, 8, 8))
+                    };
+
+                    Canvas.SetLeft(puff, x);
+                    Canvas.SetTop(puff, y);
+
+                    smoke.Children.Add(puff);
+                }
+
+                int wisps = 10 + rng.Next(6);
+
+                for (int w = 0; w < wisps; w++)
+                {
+                    double startX = coreX + rng.NextDouble() * 20;
+
+                    Line wisp = new Line
+                    {
+                        X1 = startX,
+                        Y1 = coreY + rng.NextDouble() * 20,
+                        X2 = startX + rng.NextDouble() * 20 - 10,
+                        Y2 = coreY + 90 + rng.NextDouble() * 80,
+
+                        Stroke = new SolidColorBrush(Color.FromArgb(
+                            (byte)(baseAlpha / 3),
+                            6, 6, 6)),
+
+                        StrokeThickness = 1
+                    };
+
+                    smoke.Children.Add(wisp);
+                }
+
+                smoke.RenderTransform = new RotateTransform(
+                    rng.Next(-8, 8),
+                    25,
+                    25);
+
+                Canvas.SetLeft(smoke, screenX);
+                Canvas.SetTop(smoke, screenY);
+
+                GameCanvas.Children.Add(smoke);
+            }
+        }
+        private void DrawFalseExitFlicker(double width, double height)
+        {
+            if (random.NextDouble() > hallucinationIntensity)
+                return;
+
+            double fakeX = width * (0.3 + random.NextDouble() * 0.4);
+            double fakeY = height * (0.3 + random.NextDouble() * 0.4);
+
+            byte coreAlpha = (byte)(40 + random.Next(40)); 
+
+            Color center = Color.FromArgb(coreAlpha, 40, 40, 40);   
+            Color edge   = Color.FromArgb(0, 20, 20, 20);           
+
+            Ellipse fakeExit = new Ellipse
+            {
+                Width = 50 + random.Next(0, 70),
+                Height = 50 + random.Next(0, 70),
+
+                Fill = new RadialGradientBrush(center, edge)
+                {
+                    RadiusX = 0.6 + random.NextDouble() * 0.2,
+                    RadiusY = 0.6 + random.NextDouble() * 0.2,
+                    Opacity = 0.25 + random.NextDouble() * 0.25
+                }
+            };
+
+            Canvas.SetLeft(fakeExit, fakeX);
+            Canvas.SetTop(fakeExit, fakeY);
+
+            GameCanvas.Children.Add(fakeExit);
+        }
         private void DrawMapOverlay()
         {
             double mapSize = 250;
@@ -2228,6 +3181,12 @@ namespace WPF_Game_NET
 
         private void UseVape()
         { 
+            if (PlayerInsideVapeDeadZone())
+            {
+                ShowNotification("Your vape won't fire in this area.");
+                return;
+            }
+
             if (vapeDead)
                 return;
 
@@ -2302,6 +3261,11 @@ namespace WPF_Game_NET
 
        private void BlowVapeCloud()
         {
+            if (PlayerInsideVapeDeadZone())
+            return;
+
+            smokePlumesSinceClear++;
+            
             for (int i = 0; i < 10; i++)
             {
                 clouds.Add(new VapeCloud
@@ -2336,6 +3300,30 @@ namespace WPF_Game_NET
                 if (c.Life <= 0 || c.Density < 0.05)
                     clouds.RemoveAt(i);
             }
+            if (clouds.Count == 0)
+            {
+                smokePlumesSinceClear = 0;
+            }
+        }
+
+        private double CalculateLocalSmokeDensity()
+        {
+            double density = 0;
+
+            foreach (var c in clouds)
+            {
+                double dx = c.X - playerX;
+                double dy = c.Y - playerY;
+
+                double dist = Math.Sqrt(dx * dx + dy * dy);
+
+                if (dist < 3.5) 
+                {
+                    density += (1.0 - dist / 3.5) * c.Density;
+                }
+            }
+
+            return Math.Min(1.0, density);
         }
 
         private void UpdateVapeStats()
@@ -2444,6 +3432,56 @@ namespace WPF_Game_NET
             }
         }
 
+        private void UpdateVapeFailure()
+        {
+            bool depleted =
+                battery <= 0 ||
+                liquid <= 0 ||
+                coil <= 0;
+
+            if (!depleted)
+            {
+                vapeFailureActive = false;
+                return;
+            }
+
+            if (!vapeFailureActive)
+            {
+                vapeFailureActive = true;
+                vapeFailureStart = DateTime.Now;
+                vapeFailureLevel = currentLevel;
+
+                ShowNotification(
+                    "WARNING\n" +
+                    "Your vape has completely failed.\n" +
+                    "You have limited time remaining."
+                );
+
+                return;
+            }
+
+            bool timeExpired =
+                DateTime.Now - vapeFailureStart >=
+                TimeSpan.FromMinutes(VapeFailureMinutes);
+
+            bool levelExpired =
+                currentLevel >= vapeFailureLevel + VapeFailureLevels;
+
+            if (timeExpired || levelExpired)
+            {
+                GameOver();
+            }
+
+            if (vapeFailureActive && notificationFrames <= 0)
+            {
+                ShowNotification(
+                    "WARNING\n" +
+                    "Your vape has completely failed.\n" +
+                    "You have limited time remaining.",
+                    180);
+            }
+        }
+
         private double CastRay(double angle)
         {
             double distance = 0;
@@ -2483,6 +3521,19 @@ namespace WPF_Game_NET
             if (gameState == GameState.Splash)
             {
                 ExitSplash();
+                return;
+            }
+
+            if (gameState == GameState.GameOver)
+            {
+                if (e.Key == Key.Enter)
+                {
+                    gameState = GameState.Menu;
+                    vapeFailureActive = false;
+                    ShowMainMenu();
+                    return;
+                }
+
                 return;
             }
 
@@ -2560,27 +3611,38 @@ namespace WPF_Game_NET
 
             if (e.Key == Key.Space && !vaping)
             {
+                if (PlayerInsideVapeDeadZone())
+                {
+                    ShowNotification("The dead zone suppresses your vape.");
+                    return;
+                }
+
                 vaping = true;
                 vapeFrames = Math.Max(5, battery / 3);
 
                 if (coil < 50)
-                {
                     vapeFrames = (int)(vapeFrames * 0.8);
-                }
 
                 if (coil < 10)
-                {
                     vapeFrames = (int)(vapeFrames * 0.4);
-                }
 
                 UseVape();
                 hasSmokeLoaded = true;
             }
 
-            if ((e.Key == Key.LeftShift || e.Key == Key.RightShift) && !vapeDead && hasSmokeLoaded)
+            if ((e.Key == Key.LeftShift || e.Key == Key.RightShift))
             {
-                BlowVapeCloud();
-                hasSmokeLoaded = false;
+                if (PlayerInsideVapeDeadZone())
+                {
+                    ShowNotification("Smoke cannot form inside the dead zone.");
+                    return;
+                }
+
+                if (!vapeDead && hasSmokeLoaded)
+                {
+                    BlowVapeCloud();
+                    hasSmokeLoaded = false;
+                }
             }
 
             if (e.Key == Key.P && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))

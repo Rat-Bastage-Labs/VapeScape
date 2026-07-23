@@ -13,11 +13,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Projects\\WPF-Game-NET\\WPF-Game-NET.csproj",
+      "projectUniqueName": "C:\\Projects\\VapeScape\\WPF-Game-NET.csproj",
       "projectName": "VapeScape",
-      "projectPath": "C:\\Projects\\WPF-Game-NET\\WPF-Game-NET.csproj",
+      "projectPath": "C:\\Projects\\VapeScape\\WPF-Game-NET.csproj",
       "packagesPath": "C:\\Users\\phoen\\.nuget\\packages\\",
-      "outputPath": "C:\\Projects\\WPF-Game-NET\\obj\\",
+      "outputPath": "C:\\Projects\\VapeScape\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\phoen\\AppData\\Roaming\\NuGet\\NuGet.Config"
