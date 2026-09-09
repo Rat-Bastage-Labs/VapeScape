@@ -124,6 +124,22 @@ namespace WPF_Game_NET
         private readonly List<VapeCloud> clouds = new();
         private const double CloudSpeed = 0.06;
 
+        private enum VapePickupType
+        {
+            Battery,
+            Juice,
+            Coil
+        }
+
+        private class VapePickup
+        {
+            public double X { get; set; }
+            public double Y { get; set; }
+            public VapePickupType Type { get; set; }
+        }
+
+        private readonly List<VapePickup> vapePickups = new List<VapePickup>();
+
         private readonly string[] firstNames =
         {
             "Ethan", "Maya", "Logan", "Avery", "Jules",
@@ -632,6 +648,7 @@ namespace WPF_Game_NET
                 "Lead Developer: Javier Yzaguirre\n" +
                 "Game Concept: Taylor Watson\n\n" +
 
+                "Version 2.21.13\n" +
                 "© 2026 Vape Scape. All rights reserved."
             );
         }
@@ -850,6 +867,7 @@ namespace WPF_Game_NET
             GenerateExit();
             GenerateHallPass();
             GenerateVapeDeadZone();
+            SpawnVapePickups();
 
             playerX = 1.5;
             playerY = 1.5;
@@ -2036,6 +2054,7 @@ namespace WPF_Game_NET
                     $"{currentExplorerName}");
             }
 
+            CheckVapePickupCollection();
             UpdateVapeFailure();
 
             if ((int)playerX == exitX && (int)playerY == exitY)
@@ -2620,6 +2639,7 @@ namespace WPF_Game_NET
             };
 
             DrawClouds(width, height);
+            DrawVapePickups(width, height);
             GameCanvas.Children.Add(vignette);
 
             if (hallucinationZoneActive)
@@ -3445,6 +3465,393 @@ namespace WPF_Game_NET
             }
         }
 
+        private double GetBatterySpawnChance()
+        {
+            if (currentLevel <= 10)
+                return 0.45;
+
+            if (currentLevel <= 20)
+                return 0.35;
+
+            if (currentLevel <= 30)
+                return 0.27;
+
+            if (currentLevel <= 40)
+                return 0.20;
+
+            return 0.14;
+        }
+
+        private double GetJuiceSpawnChance()
+        {
+            if (currentLevel <= 10)
+                return 0.40;
+
+            if (currentLevel <= 20)
+                return 0.30;
+
+            if (currentLevel <= 30)
+                return 0.23;
+
+            if (currentLevel <= 40)
+                return 0.17;
+
+            return 0.12;
+        }
+
+        private double GetCoilSpawnChance()
+        {
+            if (currentLevel <= 10)
+                return 0.25;
+
+            if (currentLevel <= 20)
+                return 0.20;
+
+            if (currentLevel <= 30)
+                return 0.15;
+
+            if (currentLevel <= 40)
+                return 0.11;
+
+            return 0.08;
+        }
+
+        private void SpawnVapePickups()
+        {
+            vapePickups.Clear();
+
+            if (random.NextDouble() < GetBatterySpawnChance())
+            {
+                SpawnVapePickup(VapePickupType.Battery);
+            }
+
+            if (random.NextDouble() < GetJuiceSpawnChance())
+            {
+                SpawnVapePickup(VapePickupType.Juice);
+            }
+
+            if (random.NextDouble() < GetCoilSpawnChance())
+            {
+                SpawnVapePickup(VapePickupType.Coil);
+            }
+        }
+
+        private void SpawnVapePickup(VapePickupType type)
+        {
+            for (int attempt = 0; attempt < 100; attempt++)
+            {
+                int x = random.Next(1, MapWidth - 1);
+                int y = random.Next(1, MapHeight - 1);
+
+                if (map[y, x] != 0)
+                    continue;
+
+                double pickupX = x + 0.5;
+                double pickupY = y + 0.5;
+
+                double distanceFromPlayer =
+                    Math.Sqrt(
+                        Math.Pow(pickupX - playerX, 2) +
+                        Math.Pow(pickupY - playerY, 2));
+
+                if (distanceFromPlayer < 5)
+                    continue;
+
+                bool occupied = vapePickups.Any(p =>
+                    Math.Abs(p.X - pickupX) < 0.1 &&
+                    Math.Abs(p.Y - pickupY) < 0.1);
+
+                if (occupied)
+                    continue;
+
+                vapePickups.Add(new VapePickup
+                {
+                    X = pickupX,
+                    Y = pickupY,
+                    Type = type
+                });
+
+                return;
+            }
+        }
+
+        private void DrawVapePickups(double width, double height)
+        {
+            foreach (var pickup in vapePickups)
+            {
+                double dx = pickup.X - playerX;
+                double dy = pickup.Y - playerY;
+
+                double distance =
+                    Math.Sqrt(dx * dx + dy * dy);
+
+                if (distance < 0.1)
+                    distance = 0.1;
+
+                if (!HasLineOfSightToPickup(pickup.X, pickup.Y))
+                    continue;
+
+                double angleToPickup =
+                    Math.Atan2(dy, dx) - playerAngle;
+
+                while (angleToPickup < -Math.PI)
+                    angleToPickup += Math.PI * 2;
+
+                while (angleToPickup > Math.PI)
+                    angleToPickup -= Math.PI * 2;
+
+                double fov = Math.PI / 7;
+
+                if (Math.Abs(angleToPickup) > fov / 2)
+                    continue;
+
+                double screenX =
+                    (angleToPickup / (fov / 2) + 1) *
+                    (width / 2);
+
+                double size =
+                    Math.Max(10, 55 / distance);
+
+                size = Math.Min(size, 60);
+
+                double screenY =
+                    height / 2 - size / 2;
+
+                DrawVapePickupObject(
+                    pickup,
+                    screenX,
+                    screenY,
+                    size,
+                    distance);
+            }
+        }
+
+        private void DrawVapePickupObject(
+        VapePickup pickup,
+        double screenX,
+        double screenY,
+        double size,
+        double distance)
+    {
+        StackPanel panel = new StackPanel
+        {
+            Width = size,
+            Height = size + 22,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        Border icon = new Border
+        {
+            Width = size,
+            Height = size,
+            CornerRadius = new CornerRadius(size * 0.2),
+            Background = Brushes.Black,
+            BorderThickness = new Thickness(2),
+            BorderBrush = GetPickupBrush(pickup.Type),
+            Opacity = Math.Max(0.55, 1.0 - distance * 0.02)
+        };
+
+        TextBlock symbol = new TextBlock
+        {
+            Text = GetPickupSymbol(pickup.Type),
+            FontSize = size * 0.55,
+            FontWeight = FontWeights.Bold,
+            Foreground = GetPickupBrush(pickup.Type),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextAlignment = TextAlignment.Center
+        };
+
+        icon.Child = symbol;
+
+        TextBlock label = new TextBlock
+        {
+            Text = GetPickupName(pickup.Type),
+            FontSize = Math.Max(8, size * 0.22),
+            FontWeight = FontWeights.Bold,
+            Foreground = Brushes.White,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            TextAlignment = TextAlignment.Center
+        };
+
+        panel.Children.Add(icon);
+        panel.Children.Add(label);
+
+        Canvas.SetLeft(
+            panel,
+            screenX - size / 2);
+
+        Canvas.SetTop(
+            panel,
+            screenY);
+
+        GameCanvas.Children.Add(panel);
+    }
+
+    private Brush GetPickupBrush(VapePickupType type)
+    {
+        switch (type)
+        {
+            case VapePickupType.Battery:
+                return Brushes.LimeGreen;
+
+            case VapePickupType.Juice:
+                return Brushes.DeepSkyBlue;
+
+            case VapePickupType.Coil:
+                return Brushes.Orange;
+
+            default:
+                return Brushes.White;
+        }
+    }
+
+    private string GetPickupSymbol(VapePickupType type)
+    {
+        switch (type)
+        {
+            case VapePickupType.Battery:
+                return "⚡";
+
+            case VapePickupType.Juice:
+                return "💧";
+
+            case VapePickupType.Coil:
+                return "♨";
+
+            default:
+                return "?";
+        }
+    }
+
+    private string GetPickupName(VapePickupType type)
+    {
+        switch (type)
+        {
+            case VapePickupType.Battery:
+                return "BATTERY";
+
+            case VapePickupType.Juice:
+                return "JUICE";
+
+            case VapePickupType.Coil:
+                return "COIL";
+
+            default:
+                return "ITEM";
+        }
+    }
+
+    private bool HasLineOfSightToPickup(double targetX, double targetY)
+    {
+        double dx = targetX - playerX;
+        double dy = targetY - playerY;
+
+        double distance = Math.Sqrt(dx * dx + dy * dy);
+
+        if (distance <= 0.1)
+            return true;
+
+        double stepSize = 0.05;
+
+        int steps = (int)(distance / stepSize);
+
+        for (int i = 1; i < steps; i++)
+        {
+            double checkX = playerX + (dx * i / steps);
+            double checkY = playerY + (dy * i / steps);
+
+            int mapX = (int)Math.Floor(checkX);
+            int mapY = (int)Math.Floor(checkY);
+
+            if (mapX < 0 || mapX >= MapWidth ||
+                mapY < 0 || mapY >= MapHeight)
+            {
+                return false;
+            }
+
+            if (map[mapY, mapX] != 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void CheckVapePickupCollection()
+    {
+        for (int i = vapePickups.Count - 1; i >= 0; i--)
+        {
+            VapePickup pickup = vapePickups[i];
+
+            double dx = pickup.X - playerX;
+            double dy = pickup.Y - playerY;
+
+            double distance =
+                Math.Sqrt(dx * dx + dy * dy);
+
+            if (distance > 0.6)
+                continue;
+
+            bool collected = false;
+
+            switch (pickup.Type)
+            {
+                case VapePickupType.Battery:
+                    if (battery < 100)
+                    {
+                        battery = Math.Min(100, battery + 25);
+                        collected = true;
+
+                        ShowNotification(
+                            "Battery Recovered\n" +
+                            $"Battery: {battery}%");
+                    }
+
+                    break;
+
+                case VapePickupType.Juice:
+                    if (liquid < 100)
+                    {
+                        liquid = Math.Min(100, liquid + 25);
+                        collected = true;
+
+                        ShowNotification(
+                            "Juice Recovered\n" +
+                            $"Liquid: {liquid}%");
+                    }
+
+                    break;
+
+                case VapePickupType.Coil:
+                    if (coil < 100)
+                    {
+                        coil = Math.Min(100, coil + 25);
+                        collected = true;
+
+                        ShowNotification(
+                            "Coil Recovered\n" +
+                            $"Coil: {coil}%");
+                    }
+
+                    break;
+            }
+
+            if (collected)
+            {
+                vapePickups.RemoveAt(i);
+
+                if (battery > 0 && coil > 0)
+                {
+                    vapeDead = false;
+                }
+
+                UpdateVapeStats();
+            }
+        }
+    }
         private void UpdateVapeFailure()
         { 
             int failedParts = 0;
