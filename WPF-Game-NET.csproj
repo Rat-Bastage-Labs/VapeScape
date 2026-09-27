@@ -16,4 +16,12 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <Resource Include="Assets\*.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\*.gif" />
+  </ItemGroup>
+  
 </Project>

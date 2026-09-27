@@ -140,6 +140,32 @@ namespace WPF_Game_NET
 
         private readonly List<VapePickup> vapePickups = new List<VapePickup>();
 
+        private enum CreatureType
+        {
+            VaporWraith,
+            CloudEater,
+            CoilCrawler,
+            HallwayStalker
+        }
+
+        private class Creature
+        {
+            public CreatureType Type;
+
+            public double X;
+            public double Y;
+
+            public double Speed;
+
+            public bool Active = true;
+
+            public int AttackCooldown = 0;
+
+            public double Pulse = 0;
+        }
+
+        private readonly List<Creature> creatures = new();
+
         private readonly string[] firstNames =
         {
             "Ethan", "Maya", "Logan", "Avery", "Jules",
@@ -648,7 +674,7 @@ namespace WPF_Game_NET
                 "Lead Developer: Javier Yzaguirre\n" +
                 "Game Concept: Taylor Watson\n\n" +
 
-                "Version 2.21.13\n" +
+                "Version 2.10.13\n" +
                 "© 2026 Vape Scape. All rights reserved."
             );
         }
@@ -868,10 +894,146 @@ namespace WPF_Game_NET
             GenerateHallPass();
             GenerateVapeDeadZone();
             SpawnVapePickups();
+            SpawnCreatures();
 
             playerX = 1.5;
             playerY = 1.5;
             playerAngle = 0;
+        }
+
+        private void SpawnCreatures()
+        {
+            creatures.Clear();
+
+            int creatureCount =
+                Math.Min(8, 2 + currentLevel / 5);
+
+            for (int i = 0; i < creatureCount; i++)
+            {
+                int x;
+                int y;
+
+                while (true)
+                {
+                    x = random.Next(1, MapWidth - 1);
+                    y = random.Next(1, MapHeight - 1);
+
+                    if (map[y, x] != 0)
+                        continue;
+
+                    if (Math.Abs(x - 1) < 3 &&
+                        Math.Abs(y - 1) < 3)
+                        continue;
+
+                    if (x == exitX && y == exitY)
+                        continue;
+
+                    if (x == hallPassX && y == hallPassY)
+                        continue;
+
+                    break;
+                }
+
+                CreatureType type;
+
+                if (currentLevel < 5)
+                {
+                    type = CreatureType.VaporWraith;
+                }
+                else if (currentLevel < 9)
+                {
+                    type =
+                        (i % 2 == 0)
+                            ? CreatureType.VaporWraith
+                            : CreatureType.CloudEater;
+                }
+                else if (currentLevel < 13)
+                {
+                    int typeIndex = i % 3;
+
+                    switch (typeIndex)
+                    {
+                        case 0:
+                            type = CreatureType.VaporWraith;
+                            break;
+
+                        case 1:
+                            type = CreatureType.CloudEater;
+                            break;
+
+                        default:
+                            type = CreatureType.CoilCrawler;
+                            break;
+                    }
+                }
+                else
+                {
+                    int typeIndex =
+                        (currentLevel - 13 + i) % 4;
+
+                    switch (typeIndex)
+                    {
+                        case 0:
+                            type = CreatureType.VaporWraith;
+                            break;
+
+                        case 1:
+                            type = CreatureType.CloudEater;
+                            break;
+
+                        case 2:
+                            type = CreatureType.CoilCrawler;
+                            break;
+
+                        default:
+                            type = CreatureType.HallwayStalker;
+                            break;
+                    }
+                }
+
+                double speed;
+
+                switch (type)
+                {
+                    case CreatureType.VaporWraith:
+                        speed =
+                            0.010 +
+                            currentLevel * 0.00015;
+                        break;
+
+                    case CreatureType.CloudEater:
+                        speed =
+                            0.008 +
+                            currentLevel * 0.0001;
+                        break;
+
+                    case CreatureType.CoilCrawler:
+                        speed =
+                            0.013 +
+                            currentLevel * 0.00015;
+                        break;
+
+                    case CreatureType.HallwayStalker:
+                        speed =
+                            0.009 +
+                            currentLevel * 0.0001;
+                        break;
+
+                    default:
+                        speed = 0.01;
+                        break;
+                }
+
+                creatures.Add(new Creature
+                {
+                    Type = type,
+                    X = x + 0.5,
+                    Y = y + 0.5,
+                    Speed = speed,
+                    AttackCooldown = 0,
+                    Pulse = random.NextDouble() * Math.PI * 2
+                });
+            }
         }
 
         private void GenerateExit()
@@ -1963,6 +2125,7 @@ namespace WPF_Game_NET
                     UpdatePlayer();
                     UpdateMemoryLoop();
                     UpdateLoopTeleport();
+                    UpdateCreatures();
 
                     if (vaping)
                     {
@@ -2157,6 +2320,622 @@ namespace WPF_Game_NET
             
         }
 
+        private void UpdateCreatures()
+        {
+            for (int i = creatures.Count - 1; i >= 0; i--)
+            {
+                Creature creature = creatures[i];
+
+                if (!creature.Active)
+                    continue;
+
+                creature.Pulse += 0.08;
+
+                if (creature.AttackCooldown > 0)
+                    creature.AttackCooldown--;
+
+                switch (creature.Type)
+                {
+                    case CreatureType.VaporWraith:
+                        UpdateVaporWraith(creature);
+                        break;
+
+                    case CreatureType.CloudEater:
+                        UpdateCloudEater(creature);
+                        break;
+
+                    case CreatureType.CoilCrawler:
+                        UpdateCoilCrawler(creature);
+                        break;
+
+                    case CreatureType.HallwayStalker:
+                        UpdateHallwayStalker(creature);
+                        break;
+                }
+            }
+        }
+
+        private void MoveCreatureToward(
+            Creature creature,
+            double targetX,
+            double targetY,
+            double speed)
+        {
+            double dx = targetX - creature.X;
+            double dy = targetY - creature.Y;
+
+            double distance = Math.Sqrt(dx * dx + dy * dy);
+
+            if (distance < 0.001)
+                return;
+
+            double moveX = dx / distance * speed;
+            double moveY = dy / distance * speed;
+
+            double newX = creature.X + moveX;
+            double newY = creature.Y + moveY;
+
+            int mapX = (int)newX;
+            int mapY = (int)newY;
+
+            if (mapX >= 0 &&
+                mapY >= 0 &&
+                mapX < MapWidth &&
+                mapY < MapHeight &&
+                map[mapY, mapX] == 0)
+            {
+                creature.X = newX;
+                creature.Y = newY;
+            }
+        }
+
+        private void UpdateVaporWraith(Creature creature)
+        {
+            double dx = playerX - creature.X;
+            double dy = playerY - creature.Y;
+
+            double distance =
+                Math.Sqrt(dx * dx + dy * dy);
+
+            if (vaping)
+            {
+                double awayX = creature.X - playerX;
+                double awayY = creature.Y - playerY;
+
+                double awayDistance =
+                    Math.Sqrt(
+                        awayX * awayX +
+                        awayY * awayY);
+
+                if (awayDistance > 0.01)
+                {
+                    MoveCreatureToward(
+                        creature,
+                        creature.X +
+                            awayX / awayDistance * 2.0,
+                        creature.Y +
+                            awayY / awayDistance * 2.0,
+                        creature.Speed * 2.0);
+                }
+
+                return;
+            }
+
+            MoveCreatureToward(
+                creature,
+                playerX,
+                playerY,
+                creature.Speed);
+
+            if (distance < 1.0 &&
+                creature.AttackCooldown <= 0)
+            {
+                battery = Math.Max(0, battery - 3);
+
+                creature.AttackCooldown = 90;
+
+                UpdateVapeStats();
+
+                ShowNotification(
+                    "VAPOR WRAITH\n" +
+                    "Battery drained!");
+            }
+        }
+
+        private void UpdateCloudEater(Creature creature)
+        {
+            VapeCloud? targetCloud = null;
+            double closestDistance = double.MaxValue;
+
+            foreach (var cloud in clouds)
+            {
+                double dx = cloud.X - creature.X;
+                double dy = cloud.Y - creature.Y;
+
+                double distance =
+                    Math.Sqrt(dx * dx + dy * dy);
+
+                if (distance < closestDistance)
+                {
+                    closestDistance = distance;
+                    targetCloud = cloud;
+                }
+            }
+
+            if (targetCloud != null)
+            {
+                MoveCreatureToward(
+                    creature,
+                    targetCloud.X,
+                    targetCloud.Y,
+                    creature.Speed * 1.4);
+
+                if (closestDistance < 0.7)
+                {
+                    targetCloud.Density *= 0.94;
+
+                    if (targetCloud.Density < 0.08)
+                    {
+                        clouds.Remove(targetCloud);
+                    }
+                }
+            }
+            else
+            {
+                MoveCreatureToward(
+                    creature,
+                    playerX,
+                    playerY,
+                    creature.Speed * 0.5);
+            }
+
+            double playerDx = playerX - creature.X;
+            double playerDy = playerY - creature.Y;
+
+            double playerDistance =
+                Math.Sqrt(
+                    playerDx * playerDx +
+                    playerDy * playerDy);
+
+            if (playerDistance < 0.9 &&
+                creature.AttackCooldown <= 0)
+            {
+                liquid = Math.Max(0, liquid - 2);
+                coil = Math.Max(0, coil - 1);
+
+                creature.AttackCooldown = 100;
+
+                UpdateVapeStats();
+
+                ShowNotification(
+                    "CLOUD EATER\n" +
+                    "Your vape is being consumed!");
+            }
+        }
+
+        private void UpdateCoilCrawler(Creature creature)
+        {
+            double dx = playerX - creature.X;
+            double dy = playerY - creature.Y;
+
+            double distance =
+                Math.Sqrt(dx * dx + dy * dy);
+
+            MoveCreatureToward(
+                creature,
+                playerX,
+                playerY,
+                creature.Speed);
+
+            if (distance < 0.85 &&
+                creature.AttackCooldown <= 0)
+            {
+                coil = Math.Max(0, coil - 4);
+
+                creature.AttackCooldown = 75;
+
+                UpdateVapeStats();
+
+                ShowNotification(
+                    "COIL CRAWLER\n" +
+                    "COIL DAMAGE -4");
+            }
+        }
+
+        private void UpdateHallwayStalker(Creature creature)
+        {
+            double dx = creature.X - playerX;
+            double dy = creature.Y - playerY;
+
+            double distance =
+                Math.Sqrt(dx * dx + dy * dy);
+
+            double angleToCreature =
+                Math.Atan2(dy, dx) - playerAngle;
+
+            while (angleToCreature < -Math.PI)
+                angleToCreature += Math.PI * 2;
+
+            while (angleToCreature > Math.PI)
+                angleToCreature -= Math.PI * 2;
+
+            bool lookingAtCreature =
+                Math.Abs(angleToCreature) < 0.17;
+
+            if (!lookingAtCreature)
+            {
+                MoveCreatureToward(
+                    creature,
+                    playerX,
+                    playerY,
+                    creature.Speed * 1.5);
+            }
+
+            if (distance < 0.8 &&
+                creature.AttackCooldown <= 0)
+            {
+                battery = Math.Max(0, battery - 2);
+                liquid = Math.Max(0, liquid - 2);
+
+                creature.AttackCooldown = 120;
+
+                UpdateVapeStats();
+
+                ShowNotification(
+                    "HALLWAY STALKER\n" +
+                    "It got closer...");
+            }
+        } 
+        private void DrawCreatures(double width, double height)
+        {
+            foreach (Creature creature in creatures)
+            {
+                if (!creature.Active)
+                    continue;
+
+                double dx = creature.X - playerX;
+                double dy = creature.Y - playerY;
+
+                double distance =
+                    Math.Sqrt(dx * dx + dy * dy);
+
+                if (distance < 0.15)
+                    distance = 0.15;
+
+                if (!HasLineOfSightToCreature(
+                        creature.X,
+                        creature.Y))
+                {
+                    continue;
+                }
+
+                double angle =
+                    Math.Atan2(dy, dx) - playerAngle;
+
+                while (angle < -Math.PI)
+                    angle += Math.PI * 2;
+
+                while (angle > Math.PI)
+                    angle -= Math.PI * 2;
+
+                double fov = Math.PI / 7;
+
+                if (Math.Abs(angle) > fov / 2)
+                    continue;
+
+                double screenX =
+                    (angle / (fov / 2) + 1) *
+                    (width / 2);
+
+                double creatureHeight =
+                    Math.Max(25, 180 / distance);
+
+                creatureHeight =
+                    Math.Min(
+                        creatureHeight,
+                        height * 0.65);
+
+                double creatureWidth =
+                    creatureHeight * 0.22;
+
+                double screenY =
+                    height / 2 -
+                    creatureHeight * 0.42;
+
+                DrawCreaturesHumanoid(
+                    creature,
+                    screenX,
+                    screenY,
+                    creatureWidth,
+                    creatureHeight,
+                    distance);
+            }
+        }
+        private void DrawCreaturesHumanoid(
+            Creature creature,
+            double screenX,
+            double screenY,
+            double creatureWidth,
+            double creatureHeight,
+            double distance)
+        {
+
+            if (creature.Type == CreatureType.VaporWraith)
+            {
+                DrawVaporWraithSprite(
+                    creature,
+                    screenX,
+                    screenY,
+                    creatureWidth,
+                    creatureHeight,
+                    distance);
+
+                return;
+            }
+
+            if (creature.Type == CreatureType.CloudEater)
+            {
+                DrawCloudEaterSprite(
+                    creature,
+                    screenX,
+                    screenY,
+                    creatureWidth,
+                    creatureHeight,
+                    distance);
+
+                return;
+            }
+
+            if (creature.Type == CreatureType.CoilCrawler)
+            {
+                DrawCoilCrawlerSprite(
+                    creature,
+                    screenX,
+                    screenY,
+                    creatureWidth,
+                    creatureHeight,
+                    distance);
+
+                return;
+            }
+
+            if (creature.Type == CreatureType.HallwayStalker)
+            {
+                DrawHallwayStalkerSprite(
+                    creature,
+                    screenX,
+                    screenY,
+                    creatureWidth,
+                    creatureHeight,
+                    distance);
+
+                return;
+            }
+
+        }
+
+        private void DrawVaporWraithSprite(
+            Creature creature,
+            double screenX,
+            double screenY,
+            double creatureWidth,
+            double creatureHeight,
+            double distance)
+        {
+            double scale =
+                creatureHeight / 256.0;
+
+            double spriteWidth =
+                256 * scale;
+
+            double spriteHeight =
+                256 * scale;
+
+            BitmapImage sprite =
+                new BitmapImage(
+                    new Uri(
+                        "pack://application:,,,/Assets/v_wraith.png",
+                        UriKind.Absolute));
+
+            Image creatureImage =
+                new Image
+                {
+                    Width = spriteWidth,
+                    Height = spriteHeight,
+                    Source = sprite,
+                    Stretch = Stretch.Fill,
+                    IsHitTestVisible = false,
+                    Opacity = 1.0
+                };
+
+            Canvas.SetLeft(
+                creatureImage,
+                screenX - spriteWidth / 2);
+
+            Canvas.SetTop(
+                creatureImage,
+                screenY);
+
+            GameCanvas.Children.Add(creatureImage);
+        }
+
+        private void DrawCloudEaterSprite(
+            Creature creature,
+            double screenX,
+            double screenY,
+            double creatureWidth,
+            double creatureHeight,
+            double distance)
+        {
+            double scale =
+                creatureHeight / 256.0;
+
+            double spriteWidth =
+                256 * scale;
+
+            double spriteHeight =
+                256 * scale;
+
+            BitmapImage sprite =
+                new BitmapImage(
+                    new Uri(
+                        "pack://application:,,,/Assets/cloud_eat.png",
+                        UriKind.Absolute));
+
+            Image creatureImage =
+                new Image
+                {
+                    Width = spriteWidth,
+                    Height = spriteHeight,
+                    Source = sprite,
+                    Stretch = Stretch.Fill,
+                    IsHitTestVisible = false,
+                    Opacity = 1.0
+                };
+
+            Canvas.SetLeft(
+                creatureImage,
+                screenX - spriteWidth / 2);
+
+            Canvas.SetTop(
+                creatureImage,
+                screenY);
+
+            GameCanvas.Children.Add(creatureImage);
+        }
+
+        private void DrawCoilCrawlerSprite(
+            Creature creature,
+            double screenX,
+            double screenY,
+            double creatureWidth,
+            double creatureHeight,
+            double distance)
+        {
+            double scale =
+                creatureHeight / 256.0;
+
+            double spriteWidth =
+                256 * scale;
+
+            double spriteHeight =
+                256 * scale;
+
+            BitmapImage sprite =
+                new BitmapImage(
+                    new Uri(
+                        "pack://application:,,,/Assets/coil_crawler.png",
+                        UriKind.Absolute));
+
+            Image creatureImage =
+                new Image
+                {
+                    Width = spriteWidth,
+                    Height = spriteHeight,
+                    Source = sprite,
+                    Stretch = Stretch.Fill,
+                    IsHitTestVisible = false,
+                    Opacity = 1.0
+                };
+
+            Canvas.SetLeft(
+                creatureImage,
+                screenX - spriteWidth / 2);
+
+            Canvas.SetTop(
+                creatureImage,
+                screenY);
+
+            GameCanvas.Children.Add(creatureImage);
+        }
+
+        private void DrawHallwayStalkerSprite(
+            Creature creature,
+            double screenX,
+            double screenY,
+            double creatureWidth,
+            double creatureHeight,
+            double distance)
+        {
+            double scale =
+                creatureHeight / 256.0;
+
+            double spriteWidth =
+                256 * scale;
+
+            double spriteHeight =
+                256 * scale;
+
+            BitmapImage sprite =
+                new BitmapImage(
+                    new Uri(
+                        "pack://application:,,,/Assets/hall_stalker.png",
+                        UriKind.Absolute));
+
+            Image creatureImage =
+                new Image
+                {
+                    Width = spriteWidth,
+                    Height = spriteHeight,
+                    Source = sprite,
+                    Stretch = Stretch.Fill,
+                    IsHitTestVisible = false,
+                    Opacity = 1.0
+                };
+
+            Canvas.SetLeft(
+                creatureImage,
+                screenX - spriteWidth / 2);
+
+            Canvas.SetTop(
+                creatureImage,
+                screenY);
+
+            GameCanvas.Children.Add(creatureImage);
+        }
+        private bool HasLineOfSightToCreature(
+            double targetX,
+            double targetY)
+        {
+            double dx = targetX - playerX;
+            double dy = targetY - playerY;
+
+            double distance =
+                Math.Sqrt(dx * dx + dy * dy);
+
+            int steps =
+                Math.Max(1, (int)(distance / 0.05));
+
+            for (int i = 1; i < steps; i++)
+            {
+                double checkX =
+                    playerX + dx * i / steps;
+
+                double checkY =
+                    playerY + dy * i / steps;
+
+                int mapX =
+                    (int)Math.Floor(checkX);
+
+                int mapY =
+                    (int)Math.Floor(checkY);
+
+                if (mapX < 0 ||
+                    mapY < 0 ||
+                    mapX >= MapWidth ||
+                    mapY >= MapHeight)
+                {
+                    return false;
+                }
+
+                if (map[mapY, mapX] != 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
         private void GameOver()
         {
             moveForward = false;
@@ -2639,6 +3418,7 @@ namespace WPF_Game_NET
             };
 
             DrawClouds(width, height);
+            DrawCreatures(width, height);
             DrawVapePickups(width, height);
             GameCanvas.Children.Add(vignette);
 
